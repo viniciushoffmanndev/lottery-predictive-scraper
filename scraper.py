@@ -107,7 +107,7 @@ async def buscar_resultados_por_data(client: httpx.AsyncClient, data_sorteio: st
 # ---------------------------------------------------------
 # 4. ORQUESTRADOR DE HISTÓRICO (NOVO)
 # ---------------------------------------------------------
-async def extrair_historico(dias_para_voltar: int = 5):
+async def extrair_historico(dias_para_voltar: int = 15):
     """Varre os últimos 'N' dias a partir de hoje e extrai os resultados."""
     hoje = datetime.now()
     
@@ -131,7 +131,7 @@ async def extrair_historico(dias_para_voltar: int = 5):
 async def main():
     await init_db()
     # Vamos rodar extraindo os últimos 5 dias como um teste inicial!
-    await extrair_historico(dias_para_voltar=5)
+    await extrair_historico(dias_para_voltar=15)
     print("🚀 Fim da extração de histórico!")
 
 if __name__ == "__main__":
