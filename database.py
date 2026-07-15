@@ -22,9 +22,12 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 async def init_db():
-    """Cria as tabelas no banco de dados NeonDB, se não existirem."""
+    """Cria as tabelas no banco de dados NeonDB."""
     print("Sincronizando tabelas com o NeonDB...")
     async with engine.begin() as conn:
-        # O comando run_sync permite rodar o DDL (Data Definition Language) do SQLAlchemy de forma assíncrona
+        # ATENÇÃO: Apaga a tabela atual para recriá-la com a nova regra de unicidade
+        await conn.run_sync(Base.metadata.drop_all) 
+        
+        # Cria a tabela novamente
         await conn.run_sync(Base.metadata.create_all)
-    print("✅ Banco de dados pronto!")
+    print("✅ Banco de dados formatado e pronto!")
