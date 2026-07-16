@@ -175,12 +175,17 @@ async def recalcular_ternos_dezena(session):
         print(f"   🎯 [IA] Ternos de Dezena da {loteria} atualizados para {data_alvo.strftime('%d/%m/%Y')}!")
 
 # ---------------------------------------------------------
-# 3. FUNÇÃO DE INSERÇÃO NO BANCO DE DADOS
+# 3. FUNÇÃO DE INSERÇÃO NO BANCO DE DADOS (ATUALIZADA COM AMARRAÇÃO)
 # ---------------------------------------------------------
 async def salvar_no_banco(dados_pydantic: List[ResultadoLoteriaSchema]):
     async with AsyncSessionLocal() as session:
-        valores = [
-            {
+        valores = []
+        for item in dados_pydantic:
+            # Extrai as duas últimas posições do resultado para calcular e salvar a amarração
+            dezena_str = str(item.resultado).zfill(2)[-2:]
+            grupo_calculado = converter_para_grupo(dezena_str)
+
+            valores.append({
                 "data_hora": item.data_hora,
                 "dt_horario_sorteio": item.dt_horario_sorteio,
                 "horario": item.horario,
@@ -192,9 +197,9 @@ async def salvar_no_banco(dados_pydantic: List[ResultadoLoteriaSchema]):
                 "no_loteria": item.no_loteria,
                 "no_apelido": item.no_apelido,
                 "id_loteria": item.id_loteria,
-                "tempo_restante_segundos": item.tempo_restante_segundos
-            } for item in dados_pydantic
-        ]
+                "tempo_restante_segundos": item.tempo_restante_segundos,
+                "grupo": grupo_calculado # Grava a amarração do ID do Grupo diretamente na tabela!
+            })
         
         try:
             stmt = insert(ResultadoLoteria).values(valores)
@@ -203,7 +208,7 @@ async def salvar_no_banco(dados_pydantic: List[ResultadoLoteriaSchema]):
             )
             await session.execute(stmt)
             await session.commit()
-            print("✅ Lote processado! Registros novos salvos, duplicatas ignoradas.")
+            print("✅ Lote processado! Registros novos salvos com relacionamento, duplicatas ignoradas.")
         except Exception as erro:
             await session.rollback()
             print(f"❌ Falha ao salvar no banco: {erro}")
@@ -240,7 +245,7 @@ async def buscar_resultados_por_data(client: httpx.AsyncClient, data_sorteio: st
 # ---------------------------------------------------------
 # 5. ORQUESTRADOR DE HISTÓRICO
 # ---------------------------------------------------------
-async def extrair_historico(dias_para_voltar: int = 45):
+async def extrair_historico(dias_para_voltar: int = 2):
     hoje = datetime.now()
     async with httpx.AsyncClient(timeout=15.0) as client:
         for i in range(dias_para_voltar):
@@ -257,7 +262,7 @@ async def main():
     await init_db()
     
     # 1º Passo: ATUALIZAÇÃO INCREMENTAL 
-    # Em vez de 45, agora ele busca apenas Hoje (0) e Ontem (1)
+    # Em vez de 60, agora ele busca apenas Hoje (0) e Ontem (1)
     # Isso deixa o script extremamente rápido (roda em 2 segundos!)
     await extrair_historico(dias_para_voltar=2)
     
