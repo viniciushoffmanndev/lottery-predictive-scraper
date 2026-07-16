@@ -34,7 +34,7 @@ class RespostaBuscaSchema(BaseModel):
     data: List[ResultadoLoteriaSchema]
 
 # ---------------------------------------------------------
-# 2. MOTOR PREDITIVO AUTOMÁTICO
+# 2. MOTOR PREDITIVO AUTOMÁTICO (GRUPOS)
 # ---------------------------------------------------------
 TABELA_BICHOS = {
     1: "AVESTRUZ", 2: "ÁGUIA", 3: "BURRO", 4: "BORBOLETA", 5: "CACHORRO",
@@ -54,8 +54,8 @@ def converter_para_grupo(dezena_str):
         return None
 
 async def recalcular_predicoes(session):
-    """Lê o histórico recente de 15 dias e atualiza a inteligência no NeonDB."""
-    print("\n🧠 [IA] Iniciando recalculo automatizado das predições...")
+    """Lê o histórico recente de 15 dias e atualiza a inteligência de Duques de Grupo."""
+    print("\n🧠 [IA] Iniciando recalculo automatizado das predições de GRUPOS...")
     
     res = await session.execute(select(ResultadoLoteria))
     df = pd.DataFrame([item.__dict__ for item in res.scalars().all()])
@@ -95,7 +95,6 @@ async def recalcular_predicoes(session):
         for i, (casal, freq) in enumerate(top_3, 1):
             palpite_str = f"{casal[0]} & {casal[1]}"
             
-            # Comando de Upsert: Insere novo ou atualiza se já existir
             stmt = insert(PredicaoLoteria).values(
                 data_referencia=data_alvo,
                 no_loteria=loteria,
@@ -109,7 +108,71 @@ async def recalcular_predicoes(session):
             )
             await session.execute(stmt)
             
-        print(f"   🔮 [IA] Palpites de {loteria} atualizados para {data_alvo.strftime('%d/%m/%Y')}!")
+        print(f"   🔮 [IA] Duques de Grupo da {loteria} atualizados para {data_alvo.strftime('%d/%m/%Y')}!")
+
+# ---------------------------------------------------------
+# 2.1 MOTOR PREDITIVO AUTOMÁTICO (TERNO DE DEZENA)
+# ---------------------------------------------------------
+async def recalcular_ternos_dezena(session):
+    """Lê o histórico recente de 15 dias e gera o Top 3 de Ternos de Dezena no NeonDB."""
+    print("\n🎯 [IA] Iniciando recalculo automatizado de TERNOS DE DEZENA...")
+    
+    res = await session.execute(select(ResultadoLoteria))
+    df = pd.DataFrame([item.__dict__ for item in res.scalars().all()])
+    if df.empty:
+        return
+
+    df['data_hora'] = pd.to_datetime(df['data_hora'])
+    # Isola a dezena garantindo que sempre tenha 2 dígitos numéricos corretos (ex: '05')
+    df['dezena'] = df['resultado'].astype(str).str.zfill(2).str[-2:]
+
+    data_recente = df['data_hora'].max()
+    data_limite = data_recente - pd.Timedelta(days=15)
+    df_15_dias = df[df['data_hora'] >= data_limite].copy()
+
+    # O alvo preditivo padrão é o dia atual (ou o próximo se passar das 23h)
+    data_alvo = date.today()
+    if data_recente.hour >= 23:
+        data_alvo = data_alvo + timedelta(days=1)
+
+    for loteria in ['Nacional', '26 da Sorte']:
+        df_loteria = df_15_dias[df_15_dias['no_loteria'] == loteria]
+        if df_loteria.empty:
+            continue
+            
+        # Agrupa as dezenas únicas de cada sorteio do mesmo horário
+        sorteios = df_loteria.groupby('data_hora')['dezena'].unique()
+        frequencia_ternos = Counter()
+        
+        for dezenas in sorteios:
+            validas = [d for d in dezenas if d and d.isdigit()]
+            # Só faz o cálculo combinatório se o sorteio teve pelo menos 3 dezenas diferentes
+            if len(validas) >= 3:
+                # Cria todos os grupos de 3 possíveis naquele sorteio
+                ternos = list(itertools.combinations(sorted(validas), 3))
+                frequencia_ternos.update(ternos)
+                
+        # Pega os 3 Ternos mais repetidos na janela
+        top_3 = frequencia_ternos.most_common(3)
+        
+        for i, (terno, freq) in enumerate(top_3, 1):
+            palpite_str = f"{terno[0]} & {terno[1]} & {terno[2]}"
+            
+            # Comando de Upsert para a nova predição
+            stmt = insert(PredicaoLoteria).values(
+                data_referencia=data_alvo,
+                no_loteria=loteria,
+                tipo_predicao='Terno de Dezena',
+                ranking=i,
+                palpite=palpite_str
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=['data_referencia', 'no_loteria', 'tipo_predicao', 'ranking'],
+                set_=dict(palpite=palpite_str)
+            )
+            await session.execute(stmt)
+            
+        print(f"   🎯 [IA] Ternos de Dezena da {loteria} atualizados para {data_alvo.strftime('%d/%m/%Y')}!")
 
 # ---------------------------------------------------------
 # 3. FUNÇÃO DE INSERÇÃO NO BANCO DE DADOS
@@ -193,15 +256,18 @@ async def extrair_historico(dias_para_voltar: int = 45):
 async def main():
     await init_db()
     
-    # 1º Passo: Baixa e atualiza todo o histórico de loterias
-    await extrair_historico(dias_para_voltar=45)
+    # 1º Passo: ATUALIZAÇÃO INCREMENTAL 
+    # Em vez de 45, agora ele busca apenas Hoje (0) e Ontem (1)
+    # Isso deixa o script extremamente rápido (roda em 2 segundos!)
+    await extrair_historico(dias_para_voltar=2)
     
-    # 2º Passo: Com o banco 100% atualizado, recalcula a inteligência uma única vez
+    # 2º Passo: Com o banco atualizado com o último horário, recalcula a inteligência
     async with AsyncSessionLocal() as session:
-        await recalcular_predicoes(session)
+        await recalcular_predicoes(session)         # Recalcula Duques de Grupo
+        await recalcular_ternos_dezena(session)     # Recalcula Ternos de Dezena
         await session.commit()
         
-    print("🚀 Fim da rotina! Banco atualizado e Inteligência renovada.")
+    print("🚀 Fim da rotina! Banco atualizado de forma incremental e Inteligências renovadas.")
 
 if __name__ == "__main__":
     asyncio.run(main())
