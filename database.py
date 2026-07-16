@@ -11,7 +11,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise ValueError("A variável de ambiente DATABASE_URL não foi encontrada no arquivo .env.")
 
-# Criação do engine assíncrono (echo=False para não poluir o terminal com SQL, mude para True se quiser debugar)
+# Criação do engine assíncrono
 engine = create_async_engine(DATABASE_URL, echo=False)
 
 # Fábrica de sessões assíncronas
@@ -22,12 +22,9 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 async def init_db():
-    """Cria as tabelas no banco de dados NeonDB."""
-    print("Sincronizando tabelas com o NeonDB...")
+    """Verifica e cria as tabelas no banco de dados NeonDB apenas se elas não existirem."""
+    print("Verificando a estrutura do banco de dados no NeonDB...")
     async with engine.begin() as conn:
-        # ATENÇÃO: Apaga a tabela atual para recriá-la com a nova regra de unicidade
-        await conn.run_sync(Base.metadata.drop_all) 
-        
-        # Cria a tabela novamente
+        # Apenas cria as tabelas que estão faltando. NUNCA apaga dados existentes!
         await conn.run_sync(Base.metadata.create_all)
-    print("✅ Banco de dados formatado e pronto!")
+    print("✅ Banco de dados sincronizado com segurança!")
