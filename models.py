@@ -40,12 +40,11 @@ class ResultadoLoteria(Base):
     tempo_restante_segundos: Mapped[int]
     
     # 🔗 AMARRAÇÃO (Chave Estrangeira para o Grupo)
-    # Definido como nullable=True para garantir compatibilidade com dados legados
     grupo: Mapped[Optional[int]] = mapped_column(ForeignKey('tabela_bicho_grupo_dezenas.grupo'), nullable=True)
     
     criado_em: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
-    # 🔗 RELACIONAMENTO ORM: Permite fazer `resultado.grupo_ref.bicho` diretamente no Python!
+    # 🔗 RELACIONAMENTO ORM
     grupo_ref: Mapped[Optional[BichoGrupoDezena]] = relationship("BichoGrupoDezena", back_populates="resultados")
 
     __table_args__ = (
@@ -60,10 +59,21 @@ class PredicaoLoteria(Base):
     data_referencia: Mapped[date]
     no_loteria: Mapped[str]
     tipo_predicao: Mapped[str]
+    
+    # 🌡️ A NOVA COLUNA QUE VAI CONTROLAR A NOSSA ESTRATÉGIA
+    temperatura: Mapped[str] = mapped_column(String(20), default="Neutro")
+    
     ranking: Mapped[int]
     palpite: Mapped[str]
     criado_em: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
     __table_args__ = (
-        UniqueConstraint('data_referencia', 'no_loteria', 'tipo_predicao', 'ranking', name='uix_predicao_unica'),
+        UniqueConstraint(
+            'data_referencia', 
+            'no_loteria', 
+            'tipo_predicao', 
+            'temperatura', 
+            'ranking', 
+            name='uix_predicao_unica'
+        ),
     )
