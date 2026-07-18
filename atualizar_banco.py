@@ -1,6 +1,6 @@
 import asyncio
 from sqlalchemy import text
-from database import AsyncSessionLocal
+from database_backup import AsyncSessionLocal
 
 async def cirurgia_banco():
     print("🛠️ Iniciando atualização cirúrgica do banco de dados...")
