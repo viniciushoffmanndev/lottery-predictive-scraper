@@ -1,6 +1,6 @@
 import asyncio
-from database import engine
-from models import Base
+from database_backup import engine
+from models_backup import Base
 
 async def resetar_banco():
     print("⚠️ INICIANDO O RESET DO BANCO DE DADOS...")
