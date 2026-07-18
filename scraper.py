@@ -8,8 +8,8 @@ from datetime import datetime, timedelta, date
 from typing import List
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
-from database import init_db, AsyncSessionLocal
-from models import ResultadoLoteria, PredicaoLoteria
+from database_backup import init_db, AsyncSessionLocal
+from models_backup import ResultadoLoteria, PredicaoLoteria
 
 # ---------------------------------------------------------
 # 1. MODELOS DO PYDANTIC
@@ -60,6 +60,11 @@ def obter_dezenas_do_grupo(grupo_int):
     inicio = (grupo_int - 1) * 4 + 1
     return [str(inicio + i).zfill(2) for i in range(4)]
 
+def chunk_list(lista, tamanho_lote):
+    """Divide uma lista de dicionários em fatias menores para não sobrecarregar o banco."""
+    for i in range(0, len(lista), tamanho_lote):
+        yield lista[i:i + tamanho_lote]
+
 # ---------------------------------------------------------
 # 3. MOTOR PREDITIVO 1: DUQUES DE GRUPO (10 JOGOS ESTRUTURADOS)
 # ---------------------------------------------------------
@@ -68,7 +73,8 @@ async def recalcular_duques_grupo(session):
     
     res = await session.execute(select(ResultadoLoteria))
     df = pd.DataFrame([item.__dict__ for item in res.scalars().all()])
-    if df.empty: return
+    if df.empty: 
+        return
 
     df['data_hora'] = pd.to_datetime(df['data_hora'])
     df['dezena'] = df['resultado'].str[-2:]
@@ -84,7 +90,8 @@ async def recalcular_duques_grupo(session):
     for loteria in ['Nacional', '26 da Sorte']:
         df_l_macro = df_macro[df_macro['no_loteria'] == loteria]
         df_l_curto = df_curto[df_curto['no_loteria'] == loteria]
-        if df_l_macro.empty: continue
+        if df_l_macro.empty: 
+            continue
         
         # --- CÁLCULO QUENTES (Casais que saem juntos no radar curto) ---
         sorteios_curto = df_l_curto.groupby('data_hora')['grupo'].unique()
@@ -97,7 +104,8 @@ async def recalcular_duques_grupo(session):
         
         # --- CÁLCULO MORNOS E FRIOS (Frequência individual no macro) ---
         freq_grupos = df_l_macro['grupo'].value_counts().index.tolist()
-        if len(freq_grupos) < 15: continue # Segurança contra falta de dados
+        if len(freq_grupos) < 15: 
+            continue # Segurança contra falta de dados
         
         grupo_rei = freq_grupos[0]
         grupos_perifericos = freq_grupos[5:8] # Mornos (Dispersão)
@@ -140,7 +148,8 @@ async def recalcular_ternos_milhar(session):
     
     res = await session.execute(select(ResultadoLoteria))
     df = pd.DataFrame([item.__dict__ for item in res.scalars().all()])
-    if df.empty: return
+    if df.empty: 
+        return
 
     df['data_hora'] = pd.to_datetime(df['data_hora'])
     df['resultado_str'] = df['resultado'].astype(str).str.zfill(4)
@@ -154,11 +163,13 @@ async def recalcular_ternos_milhar(session):
 
     for loteria in ['Nacional', '26 da Sorte']:
         df_lot = df_macro[df_macro['no_loteria'] == loteria]
-        if df_lot.empty: continue
+        if df_lot.empty: 
+            continue
         
         # Extrai a assinatura do servidor (Dígitos Iniciais Quentes, Mornos e Frios)
         freq_digitos = df_lot['milhar_inicio'].value_counts().index.tolist()
-        if len(freq_digitos) < 3: continue
+        if len(freq_digitos) < 3: 
+            continue
         
         digito_quente = freq_digitos[0]
         digito_morno = freq_digitos[1]
@@ -209,34 +220,51 @@ async def recalcular_ternos_milhar(session):
         print(f"   ✅ Ternos de Milhar Rotacionados da {loteria} calculados!")
 
 # ---------------------------------------------------------
-# 5. FUNÇÃO DE INSERÇÃO NO BANCO DE DADOS
+# 5. FUNÇÃO DE INSERÇÃO NO BANCO DE DADOS (COM CHUNKING E RETRY)
 # ---------------------------------------------------------
 async def salvar_no_banco(dados_pydantic: List[ResultadoLoteriaSchema]):
-    async with AsyncSessionLocal() as session:
-        valores = []
-        for item in dados_pydantic:
-            dezena_str = str(item.resultado).zfill(2)[-2:]
-            grupo_calculado = converter_para_grupo(dezena_str)
+    # 1. Converte e prepara a lista gigante de dicionários
+    valores_totais = []
+    for item in dados_pydantic:
+        dezena_str = str(item.resultado).zfill(2)[-2:]
+        grupo_calculado = converter_para_grupo(dezena_str)
 
-            valores.append({
-                "data_hora": item.data_hora, "dt_horario_sorteio": item.dt_horario_sorteio,
-                "horario": item.horario, "dt_sorteio": item.dt_sorteio,
-                "resultado": item.resultado, "premio": item.premio,
-                "tipo_resultado": item.tipo_resultado, "id_concurso": item.id_concurso,
-                "no_loteria": item.no_loteria, "no_apelido": item.no_apelido,
-                "id_loteria": item.id_loteria, "tempo_restante_segundos": item.tempo_restante_segundos,
-                "grupo": grupo_calculado 
-            })
-        
-        try:
-            stmt = insert(ResultadoLoteria).values(valores)
-            stmt = stmt.on_conflict_do_nothing(index_elements=['id_loteria', 'data_hora', 'premio'])
-            await session.execute(stmt)
-            await session.commit()
-            print("✅ Lote processado! Registros salvos.")
-        except Exception as erro:
-            await session.rollback()
-            print(f"❌ Falha ao salvar no banco: {erro}")
+        valores_totais.append({
+            "data_hora": item.data_hora, "dt_horario_sorteio": item.dt_horario_sorteio,
+            "horario": item.horario, "dt_sorteio": item.dt_sorteio,
+            "resultado": item.resultado, "premio": item.premio,
+            "tipo_resultado": item.tipo_resultado, "id_concurso": item.id_concurso,
+            "no_loteria": item.no_loteria, "no_apelido": item.no_apelido,
+            "id_loteria": item.id_loteria, "tempo_restante_segundos": item.tempo_restante_segundos,
+            "grupo": grupo_calculado 
+        })
+
+    # 2. Divide a lista gigante em lotes de segurança (ex: 100 registros por vez)
+    lotes = list(chunk_list(valores_totais, 100))
+    total_lotes = len(lotes)
+    
+    async with AsyncSessionLocal() as session:
+        for idx, lote in enumerate(lotes, 1):
+            tentativas = 3
+            while tentativas > 0:
+                try:
+                    stmt = insert(ResultadoLoteria).values(lote)
+                    stmt = stmt.on_conflict_do_nothing(index_elements=['id_loteria', 'data_hora', 'premio'])
+                    await session.execute(stmt)
+                    await session.commit()
+                    print(f"  ✅ Lote {idx}/{total_lotes} salvo com sucesso ({len(lote)} registros).")
+                    break # Sai do loop de tentativa se deu certo
+                    
+                except Exception as erro:
+                    await session.rollback()
+                    tentativas -= 1
+                    erro_msg = str(erro).split('\n')[0] # Pega só a primeira linha do erro para não poluir
+                    print(f"  ⚠️ Falha no lote {idx}/{total_lotes}. Restam {tentativas} tentativas. Erro: {erro_msg}")
+                    
+                    if tentativas == 0:
+                        print(f"  ❌ Abortando lote {idx}/{total_lotes} permanentemente.")
+                    else:
+                        await asyncio.sleep(2) # Aguarda o banco respirar antes de tentar de novo
 
 # ---------------------------------------------------------
 # 6. FUNÇÃO DE BUSCA E ORQUESTRADOR
