@@ -10,9 +10,10 @@ from sqlalchemy import text, Select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
-from database import get_session_factory
-from exceptions import DatabaseInitializationError, MissingReferenceDataError, MissingReference
+# ✅ CORRIGIDO: Imports apontando para a nova arquitetura modular
+from core.config import settings
+from db.database import get_session_factory
+from core.exceptions import DatabaseInitializationError, MissingReferenceDataError, MissingReference
 
 logger = logging.getLogger(__name__)
 

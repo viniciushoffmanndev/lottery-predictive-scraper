@@ -1,8 +1,13 @@
+import os
+from pathlib import Path
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-class DatabaseSettings(BaseModel):
-    """Configurações exclusivas do domínio de persistência (Apenas Modelo)."""
+# RESOLUÇÃO DE CAMINHO DA PLATAFORMA (Localiza o .env na verdadeira raiz do projeto)
+RAIZ_DO_PROJETO = Path(__file__).resolve().parent.parent
+
+class DatabaseSettings(BaseSettings):
+    """Configurações exclusivas do domínio de persistência auto-carregáveis."""
     url: str = Field(alias="DATABASE_URL")
     
     # Tuning de Infraestrutura
@@ -20,8 +25,15 @@ class DatabaseSettings(BaseModel):
     # Observabilidade de SGBD
     application_name: str = Field(default="lottery_scraper_worker", alias="APP_NAME")
 
-class ScraperSettings(BaseModel):
-    """Configurações exclusivas do domínio de ingestão HTTP."""
+    # Cada domínio aponta para o arquivo .env centralizado na raiz do projeto
+    model_config = SettingsConfigDict(
+        env_file=os.path.join(RAIZ_DO_PROJETO, ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
+
+class ScraperSettings(BaseSettings):
+    """Configurações exclusivas do domínio de ingestão HTTP auto-carregáveis."""
     base_url: str = Field(default="https://resultadonacional.com", alias="SCRAPER_BASE_URL")
     user_agent: str = Field(
         default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -37,19 +49,19 @@ class ScraperSettings(BaseModel):
     timeout_write: float = Field(default=10.0, alias="SCRAPER_TIMEOUT_WRITE")
     timeout_pool: float = Field(default=5.0, alias="SCRAPER_TIMEOUT_POOL")
 
-class Settings(BaseSettings):
-    """
-    Objeto raiz de configuração. 
-    O único ponto do sistema que interage com o ambiente e o arquivo .env.
-    """
-    db: DatabaseSettings = DatabaseSettings()
-    scraper: ScraperSettings = ScraperSettings()  # NOVO DOMÍNIO ADICIONADO
-    
-    # model_config dita o comportamento apenas para a injeção do objeto raiz
     model_config = SettingsConfigDict(
-        env_file=".env", 
-        extra="ignore",
-        env_nested_delimiter="__"  # Permite injeção de nested models (ex: DB__URL)
+        env_file=os.path.join(RAIZ_DO_PROJETO, ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore"
     )
 
+class Settings(BaseModel):
+    """
+    Objeto raiz unificado contendo os domínios de configuração auto-carregáveis.
+    Preserva a semântica de chamada do restante da aplicação (settings.db.url).
+    """
+    db: DatabaseSettings = Field(default_factory=DatabaseSettings)
+    scraper: ScraperSettings = Field(default_factory=ScraperSettings)
+
+# Inicialização global limpa e isolada
 settings = Settings()
