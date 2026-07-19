@@ -2,7 +2,7 @@ from decimal import Decimal
 from enum import Enum as PyEnum
 from datetime import datetime, date, time
 from typing import List, Optional, Any
-from startup import register_reference_check
+from core.startup import register_reference_check
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import (
@@ -58,7 +58,8 @@ class AuditMixin:
 class TemperaturaPalpite(PyEnum):
     QUENTE = "Quente"
     MORNO = "Morno"
-    FRIO = "Frio"      
+    FRIO = "Frio"
+    NEUTRO = "Neutro"
 
 class StatusExecucao(PyEnum):
     PENDENTE = "Pendente"
@@ -123,7 +124,7 @@ class BichoGrupoDezena(Base):
 class PipelineExecucao(AuditMixin, Base):
     __tablename__ = 'pipeline_execucoes'
 
-    id: Mapped[int] = mapped_column(BigInteger, Identity(by_default=True), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=False), primary_key=True)
     
     versao_modelo: Mapped[str] = mapped_column(String(20), server_default=text("'1.0.0'"))
     versao_algoritmo: Mapped[str] = mapped_column(String(20), server_default=text("'v1'"))
@@ -150,7 +151,13 @@ class PipelineExecucao(AuditMixin, Base):
     fim_processamento: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
     status: Mapped[StatusExecucao] = mapped_column(
-        SQLEnum(StatusExecucao, name='status_execucao_enum', create_constraint=True, native_enum=True),
+        SQLEnum(
+            StatusExecucao, 
+            name='status_execucao_enum', 
+            create_constraint=True, 
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]
+        ),
         server_default=StatusExecucao.PENDENTE.value,
         nullable=False
     )
@@ -172,21 +179,21 @@ class ResultadoLoteria(AuditMixin, Base):
     # para que o banco consiga garantir unicidade global entre as partições.
     # A identidade lógica da entidade para o domínio continua sendo apenas o `id`.
     # =========================================================================
-    id: Mapped[int] = mapped_column(BigInteger, Identity(by_default=True), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=False), primary_key=True)
     data_hora: Mapped[datetime] = mapped_column(DateTime, primary_key=True)
     
     # CORRIGIDO: CHAR(4) estrito, economizando alocação dinâmica de memória no Postgres
     resultado: Mapped[str] = mapped_column(CHAR(4), nullable=False)
     
-    dt_sorteio: Mapped[date] = mapped_column(Date, Computed("data_hora::date", stored=True))
-    horario: Mapped[time] = mapped_column(Time, Computed("data_hora::time", stored=True))
+    dt_sorteio: Mapped[date] = mapped_column(Date, Computed("data_hora::date", persisted=True))
+    horario: Mapped[time] = mapped_column(Time, Computed("data_hora::time", persisted=True))
     
-    milhar_inicio: Mapped[str] = mapped_column(CHAR(1), Computed("substring(resultado from 1 for 1)", stored=True))
-    centena: Mapped[str] = mapped_column(CHAR(3), Computed("substring(resultado from 2 for 3)", stored=True))
-    dezena: Mapped[str] = mapped_column(CHAR(2), Computed("substring(resultado from 3 for 2)", stored=True))
+    milhar_inicio: Mapped[str] = mapped_column(CHAR(1), Computed("substring(resultado from 1 for 1)", persisted=True))
+    centena: Mapped[str] = mapped_column(CHAR(3), Computed("substring(resultado from 2 for 3)", persisted=True))
+    dezena: Mapped[str] = mapped_column(CHAR(2), Computed("substring(resultado from 3 for 2)", persisted=True))
     
     _sql_grupo = "CASE WHEN substring(resultado from 3 for 2) = '00' THEN 25 ELSE ((substring(resultado from 3 for 2)::integer - 1) / 4) + 1 END"
-    grupo: Mapped[Optional[int]] = mapped_column(SmallInteger, Computed(_sql_grupo, stored=True), nullable=True)
+    grupo: Mapped[Optional[int]] = mapped_column(SmallInteger, Computed(_sql_grupo, persisted=True), nullable=True)
     
     premio: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     id_concurso: Mapped[int] = mapped_column(Integer, nullable=False) 
@@ -221,9 +228,9 @@ class ResultadoLoteria(AuditMixin, Base):
 # ==============================================================================
 
 class PredicaoLoteria(AuditMixin, Base):
-    __tablename__ = 'predicoes_loteria' 
+    __tablename__ = 'predicoes_loterias' 
 
-    id: Mapped[int] = mapped_column(BigInteger, Identity(by_default=True), primary_key=True)
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=False), primary_key=True)
     
     data_referencia: Mapped[date] = mapped_column(Date, nullable=False)
     id_loteria: Mapped[int] = mapped_column(ForeignKey('loterias.id'), nullable=False, type_=SmallInteger)
@@ -233,7 +240,13 @@ class PredicaoLoteria(AuditMixin, Base):
     janela_analise_dias: Mapped[Optional[int]] = mapped_column(SmallInteger, nullable=True, comment="Janela temporal retroativa utilizada (ex: 3, 15, 30)")
     
     temperatura: Mapped[TemperaturaPalpite] = mapped_column(
-        SQLEnum(TemperaturaPalpite, name='temperatura_enum', create_constraint=True, native_enum=True), 
+        SQLEnum(
+            TemperaturaPalpite, 
+            name='temperatura_enum', 
+            create_constraint=True, 
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]
+        ), 
         nullable=False
     )
     

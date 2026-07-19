@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from models import ResultadoLoteria, PredicaoLoteria, BichoGrupoDezena, TipoResultado, Loteria
+from db.models import ResultadoLoteria, PredicaoLoteria, BichoGrupoDezena, TipoResultado, Loteria
 
 logger = logging.getLogger(__name__)
 

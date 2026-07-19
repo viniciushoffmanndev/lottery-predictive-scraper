@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import SQLAlchemyError
 
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

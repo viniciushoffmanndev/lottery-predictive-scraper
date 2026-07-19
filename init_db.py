@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 from core.config import settings
 from db.models import Base
@@ -13,12 +12,8 @@ async def init_models():
     logger.info("🛠️  Iniciando reconstrução do esquema do banco de dados...")
     
     async with engine.begin() as conn:
-        # 🧹 Limpeza cirúrgica: Remove os Enums em maiúsculo presos no banco
-        logger.info("Limpando tipos ENUM defeituosos da nuvem...")
-        await conn.execute(text("DROP TYPE IF EXISTS status_execucao_enum CASCADE"))
-        await conn.execute(text("DROP TYPE IF EXISTS temperatura_enum CASCADE"))
-        
         logger.info("Sincronizando novas tabelas no banco da nuvem...")
+        # create_all verifica o que não existe e cria, sem apagar o que já tem!
         await conn.run_sync(Base.metadata.create_all)
         
     logger.info("✅ Esquema criado e atualizado com sucesso!")
