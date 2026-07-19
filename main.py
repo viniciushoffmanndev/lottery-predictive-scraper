@@ -1,6 +1,7 @@
 import asyncio
 import logging
-from database import init_db, close_db, AsyncSessionLocal
+from database import get_session_factory, close_db
+from startup_checks import init_db
 from orchestrator import LotteryPipelineOrchestrator
 
 # Inicialização centralizada de logs para todo o ecossistema do scraper
@@ -10,15 +11,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("main_pipeline")
 
-async def main():
+async def main() -> None:
     logger.info("Iniciando rotina mestre do ecossistema analítico...")
     
-    # 1. Garante a integridade física e de dados do banco de dados
+    # 1. Pipeline de Startup (Garante a integridade física, warmup e dados de referência)
     await init_db()
     
-    # 2. Abre a sessão (sem amarrar uma transação contínua que trave o banco)
-    # ✅ CORRIGIDO: O 'async with session.begin()' foi removido para evitar Deadlocks de Timeout!
-    async with AsyncSessionLocal() as session:
+    # 2. Abre a sessão utilizando a Factory Lazy-Loaded
+    factory = get_session_factory()
+    async with factory() as session:
         orchestrator = LotteryPipelineOrchestrator(session)
         
         # Roda a esteira de captura de dados de rede
@@ -27,7 +28,7 @@ async def main():
         # Roda o motor de predições acoplado à linhagem de MLOps
         await orchestrator.run_analytics()
             
-    # 3. Libera os recursos de pooling no shutdown
+    # 3. Libera os recursos de pooling no shutdown prevenindo state leaks
     await close_db()
     logger.info("Pipeline encerrado com sucesso. Todos os recursos foram liberados.")
 
