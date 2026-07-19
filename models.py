@@ -2,6 +2,7 @@ from decimal import Decimal
 from enum import Enum as PyEnum
 from datetime import datetime, date, time
 from typing import List, Optional, Any
+from startup import register_reference_check
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy import (
@@ -24,14 +25,15 @@ from sqlalchemy import (
     Enum as SQLEnum,
     Computed,          
     text,
-    func
+    func,
+    select
 )
 
 class Base(DeclarativeBase):
     pass
 
 # ==============================================================================
-# MIXINS DE ARQUITETURA E AUDITORIA
+# 🛡️ MIXINS DE ARQUITETURA E AUDITORIA
 # ==============================================================================
 
 class AuditMixin:
@@ -50,7 +52,7 @@ class AuditMixin:
 
 
 # ==============================================================================
-# ENUMS ESTRUTURADOS (GOVERNANÇA DE DOMÍNIO)
+# 🌡️ ENUMS ESTRUTURADOS (GOVERNANÇA DE DOMÍNIO)
 # ==============================================================================
 
 class TemperaturaPalpite(PyEnum):
@@ -66,7 +68,7 @@ class StatusExecucao(PyEnum):
     CANCELADO = "Cancelado"
 
 # ==============================================================================
-# 1. TABELAS DIMENSIONAIS (CORE DOMAIN)
+# 🏢 1. TABELAS DIMENSIONAIS (CORE DOMAIN)
 # ==============================================================================
 
 class Loteria(Base):
@@ -115,7 +117,7 @@ class BichoGrupoDezena(Base):
     )
 
 # ==============================================================================
-# 2. CADERNO DE LINHAGEM E RASTREABILIDADE MLOps (ANALYTICS DOMAIN)
+# ⚡ 2. CADERNO DE LINHAGEM E RASTREABILIDADE MLOps (ANALYTICS DOMAIN)
 # ==============================================================================
 
 class PipelineExecucao(AuditMixin, Base):
@@ -157,7 +159,7 @@ class PipelineExecucao(AuditMixin, Base):
     predicoes: Mapped[List["PredicaoLoteria"]] = relationship("PredicaoLoteria", back_populates="execucao", lazy="raise")
 
 # ==============================================================================
-# 3. TABELA DE FATOS (COMPUTAÇÃO EM DISCO NATIVA E PARTICIONADA)
+# 📊 3. TABELA DE FATOS (COMPUTAÇÃO EM DISCO NATIVA E PARTICIONADA)
 # ==============================================================================
 
 class ResultadoLoteria(AuditMixin, Base):
@@ -215,7 +217,7 @@ class ResultadoLoteria(AuditMixin, Base):
     )
 
 # ==============================================================================
-# 4. TABELA DE COMPUTAÇÃO ANALÍTICA
+# 🔮 4. TABELA DE COMPUTAÇÃO ANALÍTICA
 # ==============================================================================
 
 class PredicaoLoteria(AuditMixin, Base):
@@ -257,3 +259,14 @@ class PredicaoLoteria(AuditMixin, Base):
         ),
         Index('idx_predicoes_busca_rapida', 'id_loteria', 'data_referencia')
     )
+
+# ==============================================================================
+# 🧩 REGISTRO DE PRONTIDÃO (READINESS REGISTRY)
+# ==============================================================================
+# Desacopla a infraestrutura de startup dos modelos de domínio.
+# O módulo startup.py orquestra, mas quem dita as regras de negócio é o domínio.
+
+register_reference_check("Loterias", select(Loteria.id).limit(1))
+register_reference_check("Tipos de Resultado", select(TipoResultado.id).limit(1))
+register_reference_check("Tipos de Predição", select(TipoPredicao.id).limit(1))
+register_reference_check("Bichos/Grupos de Domínio", select(BichoGrupoDezena.grupo).limit(1))
