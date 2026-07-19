@@ -1,8 +1,8 @@
 import logging
 import time
 from sqlalchemy import text
-from database import get_engine
-from models import PipelineExecucao, PredicaoLoteria, ResultadoLoteria
+from db.database import get_engine
+from db.models import PipelineExecucao, PredicaoLoteria, ResultadoLoteria
 
 logger = logging.getLogger("maintenance.truncate")
 

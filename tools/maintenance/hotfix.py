@@ -2,7 +2,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from sqlalchemy.ext.asyncio import AsyncSession
-from database import get_session_factory
+from db.database import get_session_factory
 
 logger = logging.getLogger("maintenance.hotfix")
 
