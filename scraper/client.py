@@ -10,8 +10,9 @@ from tenacity import (
     retry_if_exception
 )
 
-from config import settings
-from schemas import RespostaBuscaSchema
+from core.config import settings
+# ✅ CORRIGIDO: Apontando para o novo pacote 'scraper.schemas'
+from scraper.schemas import RespostaBuscaSchema
 
 logger = logging.getLogger(__name__)
 

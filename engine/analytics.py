@@ -4,8 +4,8 @@ from collections import Counter
 from datetime import datetime, timedelta
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from models import ResultadoLoteria
-from repository import DataRepository
+from db.models import ResultadoLoteria
+from db.repository import DataRepository
 
 logger = logging.getLogger(__name__)
 

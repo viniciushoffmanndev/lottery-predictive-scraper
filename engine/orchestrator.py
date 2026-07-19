@@ -7,10 +7,10 @@ from datetime import datetime, date, timedelta
 from typing import Optional, NamedTuple
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import PipelineExecucao, StatusExecucao
-from schemas import RespostaBuscaSchema, LoteriaNome
-from client import ResultadoNacionalClient
-from repository import DataRepository
+from db.models import PipelineExecucao, StatusExecucao
+from scraper.schemas import RespostaBuscaSchema, LoteriaNome
+from scraper.client import ResultadoNacionalClient
+from db.repository import DataRepository
 from analytics import PredictionEngine
 
 logger = logging.getLogger(__name__)
